@@ -1,9 +1,30 @@
-from fastapi import FastAPI
-from datetime import datetime, date
+from fastapi import FastAPI, HTTPException
+from datetime import datetime, date, time
 from typing import Dict, Any
+from zoneinfo import ZoneInfo
 import calendar
 
 app = FastAPI(title="Server Time API", version="1.0.0")
+
+TIMEZONE_ALIASES = {
+    "москва": "Europe/Moscow",
+    "санкт-петербург": "Europe/Moscow",
+    "питер": "Europe/Moscow",
+    "екатеринбург": "Asia/Yekaterinburg",
+    "екаьеринбург": "Asia/Yekaterinburg",
+    "новосибирск": "Asia/Novosibirsk",
+    "омск": "Asia/Omsk",
+    "красноярск": "Asia/Krasnoyarsk",
+    "иркутск": "Asia/Irkutsk",
+    "якутск": "Asia/Yakutsk",
+    "владивосток": "Asia/Vladivostok",
+    "хабаровск": "Asia/Vladivostok",
+    "камчатка": "Asia/Kamchatka",
+    "самара": "Europe/Samara",
+    "калининград": "Europe/Kaliningrad",
+    "саратов": "Europe/Saratov",
+    "волгоград": "Europe/Volgograd",
+}
 
 
 @app.get("/")
@@ -32,6 +53,39 @@ async def get_formatted_time() -> Dict[str, str]:
         "time": current_time.strftime("%H:%M:%S"),
         "datetime": current_time.strftime("%Y-%m-%d %H:%M:%S"),
         "iso_format": current_time.isoformat()
+    }
+
+
+@app.get("/time/convert")
+async def convert_time(time_str: str, target_city: str) -> Dict[str, str]:
+    """Конвертирует время (HH:MM) из UTC в выбранный часовой пояс"""
+    normalized_city = target_city.strip().lower()
+    timezone_name = TIMEZONE_ALIASES.get(normalized_city)
+    if not timezone_name:
+        available = ", ".join(sorted(set(TIMEZONE_ALIASES.keys())))
+        raise HTTPException(
+            status_code=400,
+            detail=f"Неизвестный город. Доступные значения: {available}"
+        )
+
+    try:
+        parsed_time = datetime.strptime(time_str, "%H:%M").time()
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail="Неверный формат времени. Используйте HH:MM, например 15:00"
+        ) from exc
+
+    utc_now = datetime.now(ZoneInfo("UTC"))
+    source_dt = datetime.combine(utc_now.date(), parsed_time, tzinfo=ZoneInfo("UTC"))
+    target_dt = source_dt.astimezone(ZoneInfo(timezone_name))
+
+    return {
+        "input_time": parsed_time.strftime("%H:%M"),
+        "assumed_source_timezone": "UTC",
+        "target_city": target_city,
+        "target_timezone": timezone_name,
+        "converted_time": target_dt.strftime("%H:%M")
     }
 
 
